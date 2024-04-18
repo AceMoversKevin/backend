@@ -1,19 +1,30 @@
 import express from 'express';
 import bodyParser from 'body-parser';
-import mysql from 'mysql2';
+import mysql from 'mysql2/promise';
 import cors from 'cors';
 import nodemailer from 'nodemailer';
+import fs from 'fs';
 
 const app = express();
 app.use(cors()); // Enable CORS for all routes
 app.use(bodyParser.json());
 
+// Your MySQL SSL configuration
+const sslOptions = {
+    rejectUnauthorized: true, // This is equivalent to PostgreSQL's `rejectUnauthorized`
+    ca: fs.readFileSync('./ca.pem').toString() // Make sure the path to ca.pem is correct
+};
+
+// Create the connection pool with SSL options
 const pool = mysql.createPool({
-    host: 'sql3.freesqldatabase.com',
-    user: 'sql3696865',
-    password: 'jUr7HcxIvr',
-    database: 'sql3696865'
-}).promise();
+    host: 'mysql-30f3d557-acemovers-dd24.b.aivencloud.com',
+    port: 26656, // Make sure to use the port provided by your database service
+    user: 'avnadmin',
+    password: '<INSERT VALID PASSWORD>', // Replace with your actual password
+    database: 'defaultdb',
+    ssl: sslOptions
+});
+
 
 const emailAddresses = ['aaron@acemovers.com.au', 'harry@acemovers.com.au', 'kevin@acemovers.com.au', 'nick@acemovers.com.au'];
 
