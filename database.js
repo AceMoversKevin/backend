@@ -10,22 +10,19 @@ const app = express();
 app.use(cors()); // Enable CORS for all routes
 app.use(bodyParser.json());
 
-// Initialize configuration from .env file
-dotenv.config();
-
-// Your MySQL SSL configuration using environment variables
+// Your MySQL SSL configuration
 const sslOptions = {
-    rejectUnauthorized: true,
-    ca: fs.readFileSync(process.env.CA_CERT_PATH).toString() // Load CA certificate using path from environment variable
+    rejectUnauthorized: true, // This is equivalent to PostgreSQL's `rejectUnauthorized`
+    ca: fs.readFileSync('./ca.pem').toString() // Make sure the path to ca.pem is correct
 };
 
-// Create the connection pool with SSL options and environment variables
+// Create the connection pool with SSL options
 const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_DATABASE,
+    host: 'mysql-30f3d557-acemovers-dd24.b.aivencloud.com',
+    port: 26656, // Make sure to use the port provided by your database service
+    user: 'avnadmin',
+    password: 'AVNS_NU9ZIgbnh6Rrvc7ThrU', // Replace with your actual password
+    database: 'defaultdb',
     ssl: sslOptions
 });
 
