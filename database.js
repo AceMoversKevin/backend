@@ -4,24 +4,28 @@ import mysql from 'mysql2/promise';
 import cors from 'cors';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
+import dotenv from 'dotenv';
 
 const app = express();
 app.use(cors()); // Enable CORS for all routes
 app.use(bodyParser.json());
 
-// Your MySQL SSL configuration
+// Initialize configuration from .env file
+dotenv.config();
+
+// Your MySQL SSL configuration using environment variables
 const sslOptions = {
-    rejectUnauthorized: true, // This is equivalent to PostgreSQL's `rejectUnauthorized`
-    ca: fs.readFileSync('./ca.pem').toString() // Make sure the path to ca.pem is correct
+    rejectUnauthorized: true,
+    ca: fs.readFileSync(process.env.CA_CERT_PATH).toString() // Load CA certificate using path from environment variable
 };
 
-// Create the connection pool with SSL options
+// Create the connection pool with SSL options and environment variables
 const pool = mysql.createPool({
-    host: 'mysql-30f3d557-acemovers-dd24.b.aivencloud.com',
-    port: 26656, // Make sure to use the port provided by your database service
-    user: 'avnadmin',
-    password: '<INSERT VALID PASSWORD>', // Replace with your actual password
-    database: 'defaultdb',
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
     ssl: sslOptions
 });
 
