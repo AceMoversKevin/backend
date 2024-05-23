@@ -104,28 +104,3 @@ const PORT = 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
-
-
-// // A whitelist of valid sort fields to prevent SQL injection
-// const validSortFields = new Set([
-//     'lead_id', 'lead_name', 'bedrooms', 'pickup', 'dropoff', 'lead_date', 'phone', 'email', 'details', 'created_at'
-// ]);
-
-
-
-// app.patch('/update-booking-status', async (req, res) => {
-//     const { id, bookingStatus } = req.body;
-//     const query = `UPDATE leads SET booking_status = ? WHERE lead_id = ?;`;
-
-//     try {
-//         const [result] = await pool.query(query, [bookingStatus, id]);
-//         if (result.affectedRows > 0) {
-//             res.send('Booking status updated successfully.');
-//         } else {
-//             res.status(404).send('Record not found.');
-//         }
-//     } catch (error) {
-//         console.error('Error updating booking status: ', error);
-//         res.status(500).send('Error updating booking status');
-//     }
-// });
