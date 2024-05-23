@@ -4,7 +4,6 @@ import mysql from 'mysql2/promise';
 import cors from 'cors';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
-import dotenv from 'dotenv';
 
 const app = express();
 app.use(cors()); // Enable CORS for all routes
