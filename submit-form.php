@@ -1,47 +1,14 @@
 <?php
-require_once 'PHPMailer-master/src/PHPMailer.php'; // Adjust the path 
-require_once 'PHPMailer-master/src/SMTP.php'; // Adjust the path 
-require_once 'PHPMailer-master/src/Exception.php'; // Adjust the path 
-require 'db.php'; // Include your database connection
-
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+require_once 'db.php'; // Include your database connection
 
 header('Content-Type: application/json');
 
+// Redirect all errors to the log file to avoid sending invalid JSON responses
+ini_set('log_errors', 1);
+ini_set('error_log', 'error.log');
+
 // Email addresses
 $emailAddresses = ['aaron@acemovers.com.au', 'harry@acemovers.com.au', 'kevin@acemovers.com.au', 'nick@acemovers.com.au'];
-
-// Function to send email
-function sendEmail($formData, $nextEmailAddress) {
-    $mail = new PHPMailer(true);
-    try {
-        //Server settings
-        $mail->isSMTP();
-        $mail->Host = 'smtp.elasticemail.com';
-        $mail->SMTPAuth = true;
-        $mail->Username = 'aaron@acemovers.com.au';
-        $mail->Password = '8F1E23DEE343B60A0336456A6944E7B4F7DA';
-        $mail->SMTPSecure = 'tls';
-        $mail->Port = 587;
-
-        //Recipients
-        $mail->setFrom('aaron@acemovers.com.au', 'Aaron');
-        $mail->addAddress($nextEmailAddress);
-
-        // Content
-        $emailBody = "Name: {$formData['Name']}\nBedrooms: {$formData['Bedrooms']}\nPickup: {$formData['Pickup']}\nDropoff: {$formData['Dropoff']}\nDate: {$formData['Date']}\nPhone number: {$formData['Phone']}\nEmail: {$formData['Email']}\nDetails: {$formData['Details']}";
-        $mail->isHTML(false);
-        $mail->Subject = 'New Lead';
-        $mail->Body    = $emailBody;
-
-        $mail->send();
-        echo 'Email sent to ' . $nextEmailAddress;
-    } catch (Exception $e) {
-        error_log('Error sending email: ' . $mail->ErrorInfo);
-        throw $e; // Re-throw the error to be caught by the caller
-    }
-}
 
 // Function to get the next email index and count
 function getNextEmailInfo($conn) {
@@ -49,6 +16,7 @@ function getNextEmailInfo($conn) {
     $result = $conn->query($sql);
     if (!$result) {
         error_log('Error getting next email info: ' . $conn->error);
+        return null;
     }
     return $result->fetch_assoc();
 }
@@ -58,20 +26,45 @@ function updateEmailInfo($conn, $index, $count) {
     $stmt = $conn->prepare("UPDATE email_tracker SET current_index = ?, count = ? WHERE id = 1");
     if (!$stmt) {
         error_log('Prepare failed: ' . $conn->error);
-        return;
+        return false;
     }
     $stmt->bind_param("ii", $index, $count);
     if (!$stmt->execute()) {
         error_log('Execute failed: ' . $stmt->error);
+        return false;
+    }
+    return true;
+}
+
+// Function to split workflow over multiple threads
+function processInThreads($id, $input, $nextEmailAddress) {
+    switch ($id) {
+        case 0:
+            // Thread 0 handles email sending
+            $emailScript = escapeshellarg("php send-email.php '{$input['Name']}' '{$input['Bedrooms']}' '{$input['Pickup']}' '{$input['Dropoff']}' '{$input['Date']}' '{$input['Phone']}' '{$input['Email']}' '{$input['Details']}' '$nextEmailAddress'");
+            shell_exec("$emailScript > /dev/null 2>/dev/null &");
+            break;
+        case 1:
+            // Thread 1: logging some details
+            $logData = "Log: Processing lead for {$input['Name']} on thread 1";
+            file_put_contents('thread1.log', $logData.PHP_EOL, FILE_APPEND);
+            break;
+        case 2:
+            // Thread 2: data transformation
+            $transformedData = strtoupper(json_encode($input));
+            file_put_contents('thread2.log', "Transformed Data: $transformedData".PHP_EOL, FILE_APPEND);
+            break;
+        case 3:
+            // Thread 3: additional logging and transformation
+            $details = "{$input['Details']} processed on thread 3";
+            file_put_contents('thread3.log', "Details: $details".PHP_EOL, FILE_APPEND);
+            break;
     }
 }
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
-
-    // Debug: print received data
-    error_log('Received input: ' . print_r($input, true));
 
     $name = $input['Name'] ?? null;
     $bedrooms = $input['Bedrooms'] ?? null;
@@ -82,9 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $input['Email'] ?? null;
     $details = $input['Details'] ?? null;
 
-    // Debug: print received variables
-    error_log("Name: $name, Bedrooms: $bedrooms, Pickup: $pickup, Dropoff: $dropoff, Date: $date, Phone: $phone, Email: $email, Details: $details");
-
+    // Insert lead data into the database
     $query = "INSERT INTO leads (lead_name, bedrooms, pickup, dropoff, lead_date, phone, email, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($query);
     if (!$stmt) {
@@ -94,18 +85,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $stmt->bind_param("sissssss", $name, $bedrooms, $pickup, $dropoff, $date, $phone, $email, $details);
 
-    try {
-        if (!$stmt->execute()) {
-            error_log('Execute failed: ' . $stmt->error);
-            echo json_encode(['error' => 'Database error: execute failed']);
-            exit;
-        }
+    if (!$stmt->execute()) {
+        error_log('Execute failed: ' . $stmt->error);
+        echo json_encode(['error' => 'Database error: execute failed']);
+        exit;
+    }
 
-        $emailInfo = getNextEmailInfo($conn);
+    $emailInfo = getNextEmailInfo($conn);
+    if ($emailInfo) {
         $currentIndex = $emailInfo['current_index'];
         $count = $emailInfo['count'];
+        $nextEmailAddress = $emailAddresses[$currentIndex];
 
-        sendEmail($input, $emailAddresses[$currentIndex]);
+        for ($i = 0; $i < 4; $i++) {
+            processInThreads($i, $input, $nextEmailAddress);
+        }
 
         $newCount = $count + 1;
         $maxEmailsPerAddress = 3;
@@ -113,19 +107,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($newCount >= $maxEmailsPerAddress) {
             $newIndex = ($currentIndex + 1) % count($emailAddresses);
-            updateEmailInfo($conn, $newIndex, 0);
-        } else {
-            updateEmailInfo($conn, $currentIndex, $newCount);
+            $newCount = 0; // Reset the count for the new index
         }
 
-        echo json_encode(['message' => 'Form data saved and email sent successfully!']);
-    } catch (Exception $e) {
-        error_log('Error processing form submission and sending email: ' . $e->getMessage());
-        echo json_encode(['error' => 'Error processing request']);
-        http_response_code(500);
+        updateEmailInfo($conn, $newIndex, $newCount);
     }
+
+    echo json_encode(['message' => 'Form data saved successfully!']);
 } else {
-    echo json_encode(['error' => 'Invalid request method']);
-    http_response_code(405);
+    echo json_encode(['message' => 'Submit a POST request to this endpoint for form handling.']);
 }
 ?>
